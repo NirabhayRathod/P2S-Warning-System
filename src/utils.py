@@ -9,7 +9,7 @@ from sklearn.metrics import r2_score, accuracy_score
 
 
 def save_object(path, obj):
-    """Save Python object with dill"""
+    
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'wb') as file:
         dill.dump(obj, file=file)
@@ -50,7 +50,6 @@ def evaluate_models_classification(X_train, Y_train, X_test, Y_test, models, par
 
 
 def load_object(file_path):
-    """Load Python object with dill"""
     try:
         with open(file_path, 'rb') as file:
             return dill.load(file)
