@@ -15,31 +15,32 @@ from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
 
-from exception import CustomException
-from logger import logging
-from utils import save_object, evaluate_models
+from src.exception import CustomException
+from src.logger import logging
+from src.utils import save_object, evaluate_models_classification
 
 
 @dataclass
 class ModelTrainerConfig:
-    train_model_file_path: str = os.path.join('artifacts', 'p_wave_detection_model.pkl')
+    train_model_file_path: str = os.path.join('Artifacts', 'p_wave_detection_model.pkl')
 
 
 class ClassificationTrainer:
     def __init__(self):
         self.config = ModelTrainerConfig()
 
-    def initiate_model_training(self, train_array, test_array, preprocessor_path):
+    # model_trainer1.py (replace initiate_model_training method)
+    def initiate_model_training(self, train_array, test_array):
         try:
             logging.info("Splitting train and test arrays into features and targets for classification")
 
-            # Features = all columns except last two
-            X_train = train_array[:, :-2]
-            y_train = train_array[:, -2]  # Classification target
-            X_test = test_array[:, :-2]
-            y_test = test_array[:, -2]
+            # train_array/test_array are numpy arrays: features + last column = target (p_wave_detected)
+            X_train = train_array[:, :-1]
+            y_train = train_array[:, -1].astype(int)
 
-            # Classification models
+            X_test = test_array[:, :-1]
+            y_test = test_array[:, -1].astype(int)
+
             models = {
                 'Logistic Regression': LogisticRegression(max_iter=500),
                 'Random Forest': RandomForestClassifier(),
@@ -47,12 +48,11 @@ class ClassificationTrainer:
                 'Gradient Boosting': GradientBoostingClassifier(),
                 'K-Nearest Neighbors': KNeighborsClassifier(),
                 'Support Vector Classifier': SVC(),
-                'XGBoost': XGBClassifier(),
+                'XGBoost': XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
                 'CatBoost': CatBoostClassifier(verbose=0),
                 'AdaBoost': AdaBoostClassifier()
             }
 
-            # Hyperparameter grids
             params = {
                 'Logistic Regression': {
                     'C': [0.1, 1, 10],
@@ -93,27 +93,29 @@ class ClassificationTrainer:
             }
 
             logging.info("Evaluating classification models with provided hyperparameters")
-            model_report = evaluate_models(
+            model_report = evaluate_models_classification(
                 X_train=X_train, Y_train=y_train,
                 X_test=X_test, Y_test=y_test,
                 models=models, param=params
             )
 
-            # Select best model
-            best_model_score = max(model_report.values())
             best_model_name = max(model_report, key=model_report.get)
+            best_score = model_report[best_model_name]
+            logging.info(f"Best classification model according to CV/val: {best_model_name} -> {best_score}")
+
+            # Fit chosen model on training data
             best_model = models[best_model_name]
+            best_model.fit(X_train, y_train)
 
-            if best_model_score <= 0.6:
-                raise CustomException("No sufficiently good classification model found")
-
-            logging.info(f"Best classification model selected: {best_model_name} with Accuracy: {best_model_score}")
+            # Save trained classifier
             save_object(self.config.train_model_file_path, best_model)
+            logging.info(f"Saved best classification model: {self.config.train_model_file_path}")
 
-            predictions = best_model.predict(X_test)
-            final_score = accuracy_score(y_test, predictions)
+            preds = best_model.predict(X_test)
+            final_acc = accuracy_score(y_test, preds)
+            logging.info(f"Final classification accuracy on test: {final_acc}")
 
-            return final_score
+            return final_acc
 
         except Exception as e:
             raise CustomException(e, sys)
